@@ -6,7 +6,7 @@ import { baseSepolia, mainnet, sepolia } from "viem/chains";
 //read based clients
 export const publicClient = createPublicClient({
   chain: process.env.CONFIG === "Mainnet" ? mainnet : sepolia,
-  transport: http(),
+  transport: http(process.env.ETH_RPC_URL),
 });
 
 export const baseClient = createPublicClient({
