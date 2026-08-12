@@ -1,30 +1,35 @@
 import { Keyring } from "avail-js-sdk";
 import { createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { baseSepolia, mainnet, sepolia } from "viem/chains";
+import { base, baseSepolia, mainnet, sepolia } from "viem/chains";
+
+const isMainnet = process.env.CONFIG === "Mainnet";
+const evmPoolSeed = process.env.EVM_POOL_SEED ?? process.env.WALLET_SIGNER_KEY_ETH;
+
+if (!evmPoolSeed) {
+  throw new Error("Missing EVM_POOL_SEED or WALLET_SIGNER_KEY_ETH");
+}
 
 //read based clients
 export const publicClient = createPublicClient({
-  chain: process.env.CONFIG === "Mainnet" ? mainnet : sepolia,
+  chain: isMainnet ? mainnet : sepolia,
   transport: http(process.env.ETH_RPC_URL),
 });
 
 export const baseClient = createPublicClient({
-  chain: process.env.CONFIG === "Mainnet" ? mainnet : baseSepolia,
+  chain: isMainnet ? base : baseSepolia,
   transport: http(process.env.BASE_RPC_URL),
 });
 
 //write based clients
-export const evmAccount = privateKeyToAccount(
-  process.env.EVM_POOL_SEED! as `0x${string}`,
-);
+export const evmAccount = privateKeyToAccount(evmPoolSeed as `0x${string}`);
 
 export const walletClient = createWalletClient({
   account: evmAccount, // Include account here
-  chain: process.env.CONFIG === "Mainnet" ? mainnet : sepolia,
+  chain: isMainnet ? mainnet : sepolia,
   transport: http(process.env.ETH_RPC_URL),
 });
 
-export const availAccount = new Keyring({ type: "sr25519" }).addFromUri(
-  process.env.AVAIL_POOL_SEED!,
-);
+export const availAccount = process.env.AVAIL_POOL_SEED
+  ? new Keyring({ type: "sr25519" }).addFromUri(process.env.AVAIL_POOL_SEED)
+  : (undefined as any);
