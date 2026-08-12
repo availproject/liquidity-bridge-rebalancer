@@ -22,7 +22,6 @@ import {
   IChain,
   TxnReturnType,
 } from "../utils/types";
-import { SlotMappingResponse } from "../legacy/avail_claim";
 import { decodeAddress } from "@polkadot/keyring";
 import { u8aToHex } from "@polkadot/util";
 import { ApiPromise, KeyringPair, SubmittableResult } from "avail-js-sdk";
@@ -109,20 +108,14 @@ export async function BASE_TO_AVAIL(
       availSendReturn.event?.blockNumber,
     );
 
-    const getHeadRsp = await fetch(BRIDGE_API_URL + "/eth/head");
+    const getHeadRsp = await fetch(BRIDGE_API_URL + "/v1/eth/head");
     if (!getHeadRsp.ok) throw new Error("Failed to fetch chain head");
     const headRsp = (await getHeadRsp.json()) as HeadResponse;
     const slot: number = headRsp.slot;
 
-    const slotMappingRsp = await fetch(BRIDGE_API_URL + "/beacon/slot/" + slot);
-    if (!slotMappingRsp.ok)
-      throw new Error("Failed to fetch latest slot from beacon endpoint");
-    const mappingResponse =
-      (await slotMappingRsp.json()) as SlotMappingResponse;
-
-    if (txSendBlockNumber < mappingResponse.blockNumber) {
+    if (txSendBlockNumber < headRsp.blockNumber) {
       const proofs = await getAccountStorageProofs(
-        mappingResponse.blockHash,
+        headRsp.blockHash,
         Number(availSendReturn.event?.messageId),
       );
 

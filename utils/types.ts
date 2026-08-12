@@ -104,6 +104,8 @@ export interface AvailMessage {
 
 export interface HeadResponse {
   slot: number;
+  blockHash: Hex;
+  blockNumber: number;
   data: {
     end: number;
   };

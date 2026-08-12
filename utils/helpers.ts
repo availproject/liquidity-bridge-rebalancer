@@ -35,7 +35,7 @@ const JSONBigInt = jsonbigint({ useNativeBigInt: true });
 //api / rpc based get helpers
 export async function getMerkleProof(blockhash: string, index: number) {
   const res = await fetch(
-    `${process.env.BRIDGE_API_URL}/eth/proof/${blockhash}?index=${index}`,
+    `${process.env.BRIDGE_API_URL}/v1/eth/proof/${blockhash}?index=${index}`,
   ).catch(() => Response.error());
 
   if (!res || !res.ok) {

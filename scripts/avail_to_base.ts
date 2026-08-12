@@ -87,7 +87,7 @@ export async function AVAIL_TO_BASE(
   let lastTransactionHash: Hex | undefined;
 
   while (true) {
-    const headRsp = await fetch(BRIDGE_API_URL + "/avl/head");
+    const headRsp = await fetch(BRIDGE_API_URL + "/v1/avl/head");
     if (!headRsp.ok) throw new Error("Failed to fetch chain head");
     const head = (await headRsp.json()) as HeadResponse;
     const lastCommittedBlock = head.data.end;
