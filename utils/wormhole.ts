@@ -1,34 +1,68 @@
 import {
   TransactionId,
   Wormhole,
-  signSendWait,
   Chain,
   ChainAddress,
   ChainContext,
   Network,
   Signer,
   chainToPlatform,
+  routes,
+  toChainId,
 } from "@wormhole-foundation/sdk";
 import evm from "@wormhole-foundation/sdk/platforms/evm";
 import "@wormhole-foundation/sdk-evm-ntt";
-import { formatUnits, Hex, parseUnits, PublicClient } from "viem";
+import { nttExecutorRoute } from "@wormhole-foundation/sdk-route-ntt";
+import { formatUnits, Hex, PublicClient } from "viem";
 import { balanceOfAbi } from "./abi";
 import { TxnReturnType, WormholeTxnReturnType } from "./types";
 
+const network = () =>
+  (process.env.CONFIG ?? "Mainnet") as "Mainnet" | "Testnet" | "Devnet";
+
+const chainName = (name: string, mainnet: string, testnet: string) =>
+  process.env[name] ?? (network() === "Mainnet" ? mainnet : testnet);
+
+const env = (name: string, fallback?: string) => {
+  const value = process.env[name] ?? (fallback ? process.env[fallback] : "");
+  if (!value)
+    throw new Error(`Missing ${name}${fallback ? ` or ${fallback}` : ""}`);
+  return value;
+};
+
 export const UPDATED_NTT_TOKENS = {
-  [process.env.BASE_NETWORK!]: {
-    token: process.env.AVAIL_TOKEN_BASE!,
-    manager: process.env.MANAGER_ADDRESS_BASE!,
+  [chainName("BASE_NETWORK", "Base", "BaseSepolia")]: {
+    token: env("AVAIL_TOKEN_BASE", "NEXT_PUBLIC_AVAIL_TOKEN_BASE"),
+    manager: env("MANAGER_ADDRESS_BASE", "NEXT_PUBLIC_MANAGER_ADDRESS_BASE"),
     transceiver: {
-      wormhole: process.env.WORMHOLE_TRANSCEIVER_BASE!,
+      wormhole: env(
+        "WORMHOLE_TRANSCEIVER_BASE",
+        "NEXT_PUBLIC_WORMHOLE_TRANSCEIVER_BASE",
+      ),
     },
   },
-  [process.env.ETH_NETWORK!]: {
-    token: process.env.AVAIL_TOKEN_ETH!,
-    manager: process.env.MANAGER_ADDRESS_ETH!,
+  [chainName("ETH_NETWORK", "Ethereum", "Sepolia")]: {
+    token: env("AVAIL_TOKEN_ETH", "NEXT_PUBLIC_AVAIL_TOKEN_ETH"),
+    manager: env("MANAGER_ADDRESS_ETH", "NEXT_PUBLIC_MANAGER_ADDRESS_ETH"),
     transceiver: {
-      wormhole: process.env.WORMHOLE_TRANSCEIVER_ETH!,
+      wormhole: env(
+        "WORMHOLE_TRANSCEIVER_ETH",
+        "NEXT_PUBLIC_WORMHOLE_TRANSCEIVER_ETH",
+      ),
     },
+  },
+};
+
+const NTT_ROUTE_CONFIG = {
+  tokens: {
+    AVAIL: Object.entries(UPDATED_NTT_TOKENS).map(([chain, contracts]) => ({
+      chain,
+      token: contracts.token,
+      manager: contracts.manager,
+      transceiver: [
+        { type: "wormhole", address: contracts.transceiver.wormhole },
+      ],
+    })),
   },
 };
 
@@ -79,6 +113,49 @@ export async function getTxnStatus(
   throw new Error(`Transaction ${sourceHash} timed out after 30 minutes`);
 }
 
+async function getExecutorTxnStatus(
+  sourceHash: Hex,
+  sourceChain: Chain,
+): Promise<TxnReturnType> {
+  const MAX_DURATION = 30 * 60 * 1000;
+  const POLL_INTERVAL = 5000;
+  const startTime = Date.now();
+  const url = `https://executor${network() === "Mainnet" ? "" : "-testnet"}.labsapis.com/v0/status/tx`;
+
+  while (Date.now() - startTime < MAX_DURATION) {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        txHash: sourceHash,
+        chainId: toChainId(sourceChain),
+      }),
+    });
+    const data = await response.json();
+    const [status] = Array.isArray(data) ? data : [];
+
+    if (status?.status === "submitted") {
+      const txs = status.txs ?? [];
+      return {
+        txHash: txs[txs.length - 1]?.txHash ?? sourceHash,
+        status: status.status,
+      };
+    }
+
+    if (
+      ["failed", "unsupported", "underpaid", "aborted"].includes(
+        status?.status,
+      )
+    ) {
+      throw new Error(status.failureMessage ?? `Executor relay ${status.status}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+  }
+
+  throw new Error(`Executor relay ${sourceHash} timed out after 30 minutes`);
+}
+
 export async function getSigner<N extends Network, C extends Chain>(
   chain: ChainContext<N, C>,
 ): Promise<SignerStuff<N, C>> {
@@ -88,7 +165,7 @@ export async function getSigner<N extends Network, C extends Chain>(
     case "Evm":
       signer = await evm.getSigner(
         await chain.getRpc(),
-        process.env.EVM_POOL_SEED!,
+        env("EVM_POOL_SEED", "WALLET_SIGNER_KEY_ETH"),
       );
       break;
     default:
@@ -112,15 +189,23 @@ export async function initiateWormholeBridge(
   track: boolean = true,
 ): Promise<TxnReturnType> {
   const wh = new Wormhole(
-    process.env.CONFIG! as "Mainnet" | "Testnet" | "Devnet",
+    network(),
     [evm.Platform],
     {
       chains: {
-        [process.env.BASE_NETWORK!]: {
-          rpc: process.env.BASE_RPC_URL,
+        [chainName("BASE_NETWORK", "Base", "BaseSepolia")]: {
+          rpc:
+            process.env.BASE_RPC_URL ??
+            (network() === "Mainnet"
+              ? "https://mainnet.base.org"
+              : "https://sepolia.base.org"),
         },
-        [process.env.ETH_NETWORK!]: {
-          rpc: process.env.ETH_RPC_URL,
+        [chainName("ETH_NETWORK", "Ethereum", "Sepolia")]: {
+          rpc:
+            process.env.ETH_RPC_URL ??
+            (network() === "Mainnet"
+              ? "https://ethereum-rpc.publicnode.com"
+              : "https://ethereum-sepolia-rpc.publicnode.com"),
         },
       },
     },
@@ -139,6 +224,9 @@ export async function initiateWormholeBridge(
   const srcNtt = await src.getProtocol("Ntt", {
     ntt: UPDATED_NTT_TOKENS[src.chain],
   });
+  const dstNtt = await dst.getProtocol("Ntt", {
+    ntt: UPDATED_NTT_TOKENS[dst.chain],
+  });
 
   const balance = await publicClient.readContract({
     address: UPDATED_NTT_TOKENS[src.chain]!.token as Hex,
@@ -152,40 +240,58 @@ export async function initiateWormholeBridge(
   );
 
   if (balance === 0n) throw new Error("No AVAIL tokens to bridge");
-  const ethBalance = await publicClient.getBalance({
-    address: srcSigner.address.address.toString() as Hex,
-  });
+  const amountToBridge = amount ?? balance;
+  if (amountToBridge > balance) throw new Error("Insufficient AVAIL balance");
 
   let txnIds!: TransactionId[];
 
   for (let i = 0; i < 3; i++) {
     try {
-      // const minEthRequired = parseUnits("0.001", 18);
-      // if (ethBalance < minEthRequired) {
-      //   throw new Error(
-      //     `Insufficient ETH for gas. Required: 0.001 ETH, Current: ${formatUnits(ethBalance, 18)} ETH`,
-      //   );
-      // }
-
       console.log(`🔄 Initiating bridge to ${dstChain}`);
+      const srcDecimals = await srcNtt.getTokenDecimals();
+      const dstDecimals = await dstNtt.getTokenDecimals();
 
-      const xfer = () =>
-        srcNtt.transfer(
-          srcSigner.address.address,
-          amount ?? balance,
-          dstSigner.address,
-          {
-            queue: false,
-            automatic: true,
-          },
-        );
-
-      const _txids: TransactionId[] = await signSendWait(
-        src,
-        xfer(),
-        srcSigner.signer,
+      const ExecutorRoute = nttExecutorRoute({ ntt: NTT_ROUTE_CONFIG as any });
+      const route = new ExecutorRoute(wh as any);
+      const request = await routes.RouteTransferRequest.create(
+        wh as any,
+        {
+          source: Wormhole.tokenId(
+            src.chain,
+            UPDATED_NTT_TOKENS[src.chain]!.token,
+          ),
+          destination: Wormhole.tokenId(
+            dst.chain,
+            UPDATED_NTT_TOKENS[dst.chain]!.token,
+          ),
+          sourceDecimals: srcDecimals,
+          destinationDecimals: dstDecimals,
+          sender: srcSigner.address,
+          recipient: dstSigner.address,
+        },
+        src as any,
+        dst as any,
       );
-      txnIds = _txids;
+
+      const validated = await route.validate(request as any, {
+        amount: formatUnits(amountToBridge, srcDecimals),
+        options: { nativeGas: 0 },
+      } as any);
+
+      if (!validated.valid) throw validated.error;
+
+      const quote = await route.quote(request as any, validated.params as any);
+
+      if (!quote.success) throw quote.error;
+
+      const receipt = (await route.initiate(
+        request as any,
+        srcSigner.signer,
+        quote as any,
+        dstSigner.address,
+      )) as any;
+
+      txnIds = receipt.originTxs;
       break;
     } catch (e: any) {
       console.log("TRY NO", i + 1, "failed due to --", e.message);
@@ -198,26 +304,27 @@ export async function initiateWormholeBridge(
   }
 
   console.log("✅ Bridge transaction initiated");
-  console.log(
-    `🔗 View on wormholescan: https://wormholescan.io/#/tx/${txnIds[1]?.txid ?? txnIds[0].txid}?network=${process.env.CONFIG}`,
-  );
-
-  if (!txnIds) {
+  if (!txnIds?.length) {
     throw new Error("No Txn ids available something went wrong here");
   }
 
+  const sourceTxHash = txnIds[txnIds.length - 1]?.txid ?? txnIds[0].txid;
+  console.log(
+    `🔗 View on wormholescan: https://wormholescan.io/#/tx/${sourceTxHash}?network=${network()}`,
+  );
+
   if (!track) {
     return {
-      txHash: txnIds[1]?.txid ?? txnIds[0].txid,
+      txHash: sourceTxHash,
       status: "initated",
     };
   }
 
-  const result = await getTxnStatus((txnIds[1]?.txid ?? txnIds[0].txid) as Hex);
+  const result = await getExecutorTxnStatus(sourceTxHash as Hex, src.chain);
 
   return {
-    wormholeInitiateHash: txnIds[1]?.txid ?? txnIds[0].txid,
-    txHash: result.operations[0].targetChain!.transaction.txHash,
-    status: result.operations[0].targetChain!.status,
+    wormholeInitiateHash: sourceTxHash,
+    txHash: result.txHash,
+    status: result.status,
   };
 }
