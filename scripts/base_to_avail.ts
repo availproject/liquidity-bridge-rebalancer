@@ -58,9 +58,7 @@ export async function BASE_TO_AVAIL(
     args: [process.env.EVM_POOL_ADDRESS as Hex],
   });
 
-  if (
-    new BigNumber(evmPoolBalance).isLessThanOrEqualTo(new BigNumber(amount))
-  ) {
+  if (new BigNumber(evmPoolBalance).isLessThan(new BigNumber(amount))) {
     throw new Error(
       "evm pool balance has no erc20 avail to be bridged, did the wormhole bridge work? ",
     );
