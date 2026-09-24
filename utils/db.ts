@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 
-const db = new Database("rebalancer.sqlite");
+const db = new Database(process.env.DB_PATH ?? "rebalancer.sqlite");
 db.prepare(
   `
   CREATE TABLE IF NOT EXISTS job_status (

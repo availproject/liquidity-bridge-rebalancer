@@ -1,0 +1,52 @@
+dockerfile = "Dockerfile"
+service_level = "mainnet"
+
+[network]
+port = 3001
+
+[[network.extra_service]]
+name = "cron"
+port = 3000
+type = "ClusterIP"
+
+[resources]
+cpu_request    = "250m"
+cpu_limit      = "1000m"
+memory_request = "256Mi"
+memory_limit   = "1Gi"
+
+[deploy]
+strategy = "recreate"
+
+[[volumes]]
+mount_path = "/app/data"
+size = "1Gi"
+
+[env]
+NODE_ENV = "production"
+DB_PATH = "/app/data/rebalancer.sqlite"
+CONFIG = "Mainnet"
+BRIDGE_API_URL = "https://bridge-api.avail.so"
+AMOUNT_TO_BRIDGE = "300000000000000000000000"
+GAS_THRESHOLD = "100000000000000"
+THRESHOLD = "200000000000000000000000"
+ETH_RPC_URL = "https://rpcs.avail.so/eth"
+BASE_RPC_URL = "https://rpcs.avail.so/base"
+AVAIL_RPC = "wss://mainnet-rpc.avail.so/ws"
+BRIDGE_PROXY_ETH = "0x054fd961708D8E2B9c10a63F6157c74458889F0a"
+AVAIL_TOKEN_ETH = "0xEeB4d8400AEefafC1B2953e0094134A887C76Bd8"
+AVAIL_TOKEN_BASE = "0xd89d90d26B48940FA8F58385Fe84625d468E057a"
+BASE_NETWORK = "Base"
+ETH_NETWORK = "Ethereum"
+MANAGER_ADDRESS_ETH = "0x2E65520ff593b583A2e5895174eF7F40F78a90BD"
+MANAGER_ADDRESS_BASE = "0x4b3d190ca333a1414376Dd565ACBa58350A36d67"
+WORMHOLE_TRANSCEIVER_ETH = "0xFaD96a1B1dad4a4391EEAb773Df739032526f389"
+WORMHOLE_TRANSCEIVER_BASE = "0xc986dD854B8F4acb5ccF2fa1cdacC113e6de0892"
+AVAIL_POOL_ADDRESS = "5FgyT3fApMoG7hmXPNaxVjv1cXeDc3h6UuQwGvAeqAug3X65"
+EVM_POOL_ADDRESS = "0xA5E39A46b7760908C2F0d014BEA2C3ef77fB22F2"
+
+[secrets]
+AVAIL_POOL_SEED    = "/porto/mainnet/liquidity-bridge-rebalancer/avail-pool-seed"
+EVM_POOL_SEED      = "/porto/mainnet/liquidity-bridge-rebalancer/evm-pool-seed"
+UNKEY_ROOT_KEY     = "/porto/mainnet/liquidity-bridge-rebalancer/unkey-root-key"
+SLACK_BOT_TOKEN    = "/porto/mainnet/liquidity-bridge-rebalancer/slack-bot-token"
